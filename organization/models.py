@@ -8,33 +8,35 @@ class Organization(models.Model):
     email = models.EmailField("Электронная почта")
     code_mo = models.CharField("Код МО в СМО", max_length=20, blank=True, null=True)
     oid_mo = models.CharField("OID МО", max_length=50)
+    region = models.CharField("Регион", max_length=50)
 
     class Meta:
-        verbose_name = "Организация"
+        verbose_name = "Организацию"
         verbose_name_plural = "Организации"
 
     def __str__(self):
         return f"{self.name} ({self.code_mo or 'без кода МО'})"
 
 
-class MOConfiguration(models.Model):
+class ActiveOrganization(models.Model):
     """
-    Модель для выбора конкретной МО (медицинской организации),
-    используемой в установленной версии, и хранения конфигурации в формате JSON.
+    Модель для задания главной (активной) организации.
+    Только подразделения, отделения и участки этой организации будут отображаться
+    в развернутой версии приложения.
     """
     organization = models.OneToOneField(
         Organization,
         on_delete=models.CASCADE,
-        verbose_name="Выбранная МО"
+        verbose_name="Главная организация"
     )
-    configuration = models.JSONField("Конфигурация", blank=True, null=True)
+    is_active = models.BooleanField("Активна", default=False)
 
     class Meta:
-        verbose_name = "Конфигурация МО"
-        verbose_name_plural = "Конфигурации МО"
+        verbose_name = "Активную организацию"
+        verbose_name_plural = "Активная организация"
 
     def __str__(self):
-        return f"Конфигурация для {self.organization}"
+        return f"Активная организация: {self.organization}"
 
 
 class Building(models.Model):
@@ -65,8 +67,7 @@ class Department(models.Model):
     )
     name = models.CharField("Название отделения", max_length=255)
     additional_name = models.CharField("Дополнительное название отделения", max_length=255, blank=True, null=True)
-    # Поле для связи с внешними системами
-    external_id = models.CharField("Идентификатор из внешней системы", max_length=100, blank=True, null=True)
+
 
     class Meta:
         verbose_name = "Отделение"
@@ -76,32 +77,11 @@ class Department(models.Model):
         return f"{self.name} ({self.building.name})"
 
 
-class RelatedDepartment(models.Model):
-    department = models.ForeignKey(
-        Department,
-        on_delete=models.CASCADE,
-        related_name='oms_departments',
-        verbose_name="Отделение"
-    )
-    name = models.CharField("Название отделения", max_length=255)
-    # Добавляем поле «Источник»
-    source = models.CharField("Источник", max_length=255)
-    # Поле для хранения файлов или настроек конфигурации в формате JSON
-    configuration = models.JSONField("Конфигурация", blank=True, null=True)
-
-    class Meta:
-        verbose_name = "Отделение: связанное"
-        verbose_name_plural = "Отделения: связанные"
-
-    def __str__(self):
-        return f"{self.name} (Web-ОМС)"
-
-
 class Station(models.Model):
     department = models.ForeignKey(
         Department,
         on_delete=models.CASCADE,
-        related_name='sections',
+        related_name='stations',
         verbose_name="Отделение"
     )
     code = models.CharField("Код участка", max_length=255)
@@ -114,4 +94,47 @@ class Station(models.Model):
         verbose_name_plural = "Участки"
 
     def __str__(self):
-        return f"{self.name} ({self.department})"
+        return f"{self.name or self.code} ({self.department})"
+
+
+class SourceSystem(models.Model):
+    """
+    Модель для хранения сведений о внешних системах.
+    Здесь централизовано задаются название внешней системы и регион.
+    """
+    name = models.CharField("Название внешней системы", max_length=255)
+    region = models.CharField("Регион", max_length=255)
+
+    class Meta:
+        verbose_name = "Внешняя система"
+        verbose_name_plural = "Внешние системы"
+
+    def __str__(self):
+        return f"{self.name} ({self.region})"
+
+
+class RelatedDepartment(models.Model):
+    """
+    Модель для связи отделения (из нашей базы) с данными из внешней системы.
+    Например, если во внешней системе отделение называется иначе, здесь можно указать
+    соответствующее имя и связать с внешней системой.
+    """
+    department = models.ForeignKey(
+        Department,
+        on_delete=models.CASCADE,
+        related_name='related_departments',
+        verbose_name="Отделение"
+    )
+    external_department_name = models.CharField("Название отделения во внешней системе", max_length=255)
+    source_system = models.ForeignKey(
+        SourceSystem,
+        on_delete=models.CASCADE,
+        verbose_name="Внешняя система"
+    )
+
+    class Meta:
+        verbose_name = "Связь с внешним отделением"
+        verbose_name_plural = "Связи с внешними отделениями"
+
+    def __str__(self):
+        return f"{self.department.name} — {self.external_department_name} ({self.source_system.name})"
