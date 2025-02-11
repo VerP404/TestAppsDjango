@@ -17,6 +17,26 @@ class Organization(models.Model):
         return f"{self.name} ({self.code_mo or 'без кода МО'})"
 
 
+class MOConfiguration(models.Model):
+    """
+    Модель для выбора конкретной МО (медицинской организации),
+    используемой в установленной версии, и хранения конфигурации в формате JSON.
+    """
+    organization = models.OneToOneField(
+        Organization,
+        on_delete=models.CASCADE,
+        verbose_name="Выбранная МО"
+    )
+    configuration = models.JSONField("Конфигурация", blank=True, null=True)
+
+    class Meta:
+        verbose_name = "Конфигурация МО"
+        verbose_name_plural = "Конфигурации МО"
+
+    def __str__(self):
+        return f"Конфигурация для {self.organization}"
+
+
 class Building(models.Model):
     organization = models.ForeignKey(
         Organization,
@@ -32,7 +52,8 @@ class Building(models.Model):
         verbose_name_plural = "Корпусы"
 
     def __str__(self):
-        return f"{self.name} - {self.additional_name}"
+        additional = f" - {self.additional_name}" if self.additional_name else ""
+        return f"{self.name}{additional}"
 
 
 class Department(models.Model):
@@ -44,6 +65,8 @@ class Department(models.Model):
     )
     name = models.CharField("Название отделения", max_length=255)
     additional_name = models.CharField("Дополнительное название отделения", max_length=255, blank=True, null=True)
+    # Поле для связи с внешними системами
+    external_id = models.CharField("Идентификатор из внешней системы", max_length=100, blank=True, null=True)
 
     class Meta:
         verbose_name = "Отделение"
@@ -55,12 +78,16 @@ class Department(models.Model):
 
 class RelatedDepartment(models.Model):
     department = models.ForeignKey(
-        'Department',
+        Department,
         on_delete=models.CASCADE,
         related_name='oms_departments',
         verbose_name="Отделение"
     )
     name = models.CharField("Название отделения", max_length=255)
+    # Добавляем поле «Источник»
+    source = models.CharField("Источник", max_length=255)
+    # Поле для хранения файлов или настроек конфигурации в формате JSON
+    configuration = models.JSONField("Конфигурация", blank=True, null=True)
 
     class Meta:
         verbose_name = "Отделение: связанное"

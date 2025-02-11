@@ -35,7 +35,7 @@ class InsurancePolicy(models.Model):
         verbose_name = "Полис"
         verbose_name_plural = "Полисы"
         indexes = [
-            models.Index(fields=['enp'])
+            models.Index(fields=['enp']),
         ]
 
     def __str__(self):
@@ -75,13 +75,12 @@ class PhysicalPerson(models.Model):
         ]
     )
     telegram = models.BigIntegerField("Телеграм", null=True, blank=True)
-    policy = models.ForeignKey(
+    # Теперь может быть несколько полисов для одного физического лица.
+    policies = models.ManyToManyField(
         InsurancePolicy,
-        null=True,
         blank=True,
-        on_delete=models.SET_NULL,
-        db_column="id_полиса",
-        verbose_name="Полис"
+        verbose_name="Полисы",
+        related_name="physical_persons"
     )
 
     class Meta:
@@ -90,7 +89,7 @@ class PhysicalPerson(models.Model):
         indexes = [
             models.Index(
                 fields=['last_name', 'birth_date', 'snils', 'phone'],
-            )
+            ),
         ]
 
     def __str__(self):
