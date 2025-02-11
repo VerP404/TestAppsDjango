@@ -1,16 +1,18 @@
 from django.db import models
 from django.core.validators import RegexValidator
+from django.core.exceptions import ValidationError
+from django.db.models import Q
 
 
 class Insurance(models.Model):
     """
     Страховые компании
     """
-    code = models.IntegerField(unique=True, db_column="Код")
+    code = models.IntegerField(unique=True, verbose_name="Код")
     name = models.CharField("Название", max_length=255)
 
     class Meta:
-        verbose_name = "Страховая компания"
+        verbose_name = "Страховую компанию"
         verbose_name_plural = "Страховые компании"
 
     def __str__(self):
@@ -19,16 +21,27 @@ class Insurance(models.Model):
 
 class InsurancePolicy(models.Model):
     """
-    Страховые полиса
+    Страховые полисы
     """
-    enp = models.CharField("ЕНП", max_length=16, unique=True)
-    start_date = models.DateField("Дата_начала_страхования")
-    end_date = models.DateField("Дата_окончания_страхования", null=True, blank=True)
+    enp = models.CharField("ЕНП", max_length=16, validators=[
+        RegexValidator(
+            regex=r'^[0-9]{16}$',
+            message="ЕНП должен состоять из 16 цифр"
+        )
+    ])
+    start_date = models.DateField("Дата начала страхования")
+    end_date = models.DateField("Дата окончания страхования", null=True, blank=True)
     insurance = models.ForeignKey(
         Insurance,
         on_delete=models.PROTECT,
-        db_column="Код_СМО",
         verbose_name="Страховая организация"
+    )
+    # Каждый полис привязан к одному физическому лицу.
+    physical_person = models.ForeignKey(
+        "PhysicalPerson",
+        on_delete=models.CASCADE,
+        verbose_name="Физическое лицо",
+        related_name="policies"
     )
 
     class Meta:
@@ -41,6 +54,23 @@ class InsurancePolicy(models.Model):
     def __str__(self):
         return f'{self.enp}: {self.start_date} - {self.end_date}'
 
+    def clean(self):
+        """
+        Проверяем, что если полис с таким же ENP уже существует,
+        то он принадлежит тому же физическому лицу.
+        """
+        super().clean()
+        # Найдем все полисы с таким же enp, исключая текущую запись (если обновляем)
+        qs = InsurancePolicy.objects.filter(enp=self.enp)
+        if self.pk:
+            qs = qs.exclude(pk=self.pk)
+        # Если найдены записи с таким же ENP, проверяем, что у всех physical_person совпадает
+        for policy in qs:
+            if policy.physical_person != self.physical_person:
+                raise ValidationError(
+                    {"enp": "Полис с таким ЕНП уже существует для другого физического лица."}
+                )
+
 
 class PhysicalPerson(models.Model):
     """
@@ -48,13 +78,14 @@ class PhysicalPerson(models.Model):
     """
     last_name = models.CharField("Фамилия", max_length=255)
     first_name = models.CharField("Имя", max_length=255)
-    middle_name = models.CharField("Отчество", max_length=255)
-    birth_date = models.DateField("Дата_рождения")
+    middle_name = models.CharField("Отчество", max_length=255, default='-')
+    birth_date = models.DateField("Дата рождения")
     gender = models.CharField("Пол", max_length=1, choices=(('М', 'М'), ('Ж', 'Ж')))
     snils = models.CharField(
         "СНИЛС",
         max_length=11,
-        unique=True,
+        null=True,
+        blank=True,
         validators=[
             RegexValidator(
                 regex=r'^[0-9]{11}$',
@@ -75,21 +106,16 @@ class PhysicalPerson(models.Model):
         ]
     )
     telegram = models.BigIntegerField("Телеграм", null=True, blank=True)
-    # Теперь может быть несколько полисов для одного физического лица.
-    policies = models.ManyToManyField(
-        InsurancePolicy,
-        blank=True,
-        verbose_name="Полисы",
-        related_name="physical_persons"
-    )
 
     class Meta:
         verbose_name = "Физическое лицо"
         verbose_name_plural = "Физические лица"
-        indexes = [
-            models.Index(
-                fields=['last_name', 'birth_date', 'snils', 'phone'],
-            ),
+        constraints = [
+            models.UniqueConstraint(
+                fields=['snils'],
+                condition=Q(snils__isnull=False),
+                name='unique_snils'
+            )
         ]
 
     def __str__(self):
