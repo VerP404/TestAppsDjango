@@ -3,6 +3,8 @@ from django.core.validators import RegexValidator
 from django.core.exceptions import ValidationError
 from django.db.models import Q
 
+from organization.models import Station
+
 
 class Insurance(models.Model):
     """
@@ -120,3 +122,34 @@ class PhysicalPerson(models.Model):
 
     def __str__(self):
         return f"{self.last_name} {self.first_name}"
+
+
+class AttachmentPeriod(models.Model):
+    physical_person = models.ForeignKey(
+        PhysicalPerson,
+        on_delete=models.CASCADE,
+        verbose_name="Физическое лицо"
+    )
+    station = models.ForeignKey(
+        Station,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        verbose_name="Участок"
+    )
+    enp = models.CharField("ЕНП", max_length=16, blank=True, null=True)
+    smo = models.CharField("СМО", max_length=50, blank=True, null=True)
+    start_date = models.DateField("Дата начала прикрепления")
+    end_date = models.DateField("Дата окончания прикрепления", null=True, blank=True)
+    report_date = models.DateField("Дата отчёта")
+
+    class Meta:
+        verbose_name = "Прикрепление (интервал)"
+        verbose_name_plural = "Прикрепления (интервалы)"
+        indexes = [
+            models.Index(fields=["report_date"]),
+            models.Index(fields=["enp"]),
+        ]
+
+    def __str__(self):
+        return f"{self.physical_person} прикреплён с {self.start_date} по {self.end_date or 'настоящее время'}"

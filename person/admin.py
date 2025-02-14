@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Insurance, InsurancePolicy, PhysicalPerson
+from .models import Insurance, InsurancePolicy, PhysicalPerson, AttachmentPeriod
 from .forms import InsurancePolicyInlineFormSet
 
 
@@ -25,3 +25,15 @@ class PhysicalPersonAdmin(admin.ModelAdmin):
     list_display = ('last_name', 'first_name', 'birth_date', 'snils')
     search_fields = ('last_name', 'first_name', 'snils', 'phone')
     inlines = [InsurancePolicyInline]
+
+
+@admin.register(AttachmentPeriod)
+class AttachmentPeriodAdmin(admin.ModelAdmin):
+    list_display = ('physical_person', 'report_date', 'station', 'start_date', 'end_date', 'enp')
+    search_fields = (
+        'physical_person__last_name',
+        'physical_person__first_name',
+        'enp',
+    )
+    list_filter = ('report_date', 'station')
+    autocomplete_fields = ('physical_person', 'station')

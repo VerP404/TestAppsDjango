@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -68,7 +69,6 @@ class Department(models.Model):
     name = models.CharField("Название отделения", max_length=255)
     additional_name = models.CharField("Дополнительное название отделения", max_length=255, blank=True, null=True)
 
-
     class Meta:
         verbose_name = "Отделение"
         verbose_name_plural = "Отделения"
@@ -95,6 +95,55 @@ class Station(models.Model):
 
     def __str__(self):
         return f"{self.name or self.code} ({self.department})"
+
+
+class StationDoctorAssignment(models.Model):
+    station = models.ForeignKey(
+        'organization.Station',
+        on_delete=models.CASCADE,
+        related_name='doctor_assignments',
+        verbose_name='Участок'
+    )
+    doctor = models.ForeignKey(
+        'kadry.Employee',
+        on_delete=models.CASCADE,
+        verbose_name='Врач'
+    )
+    appointment_date = models.DateField('Дата начала')
+    removal_date = models.DateField('Дата окончания', blank=True, null=True)
+
+    class Meta:
+        verbose_name = 'Назначение врача на участок'
+        verbose_name_plural = 'Назначения врачей на участок'
+
+    def __str__(self):
+        return f"{self.doctor} на {self.station} с {self.appointment_date}"
+
+    def clean(self):
+        super().clean()
+        # Проверяем, что дата окончания не раньше даты начала, если она указана
+        if self.removal_date and self.removal_date < self.appointment_date:
+            raise ValidationError("Дата окончания не может быть раньше даты начала")
+
+        # Если назначение активно (removal_date не указана)
+        if self.removal_date is None:
+            # Получаем все активные назначения для данного участка
+            active_assignments = StationDoctorAssignment.objects.filter(
+                station=self.station, removal_date__isnull=True
+            )
+            # Если запись обновляется, исключаем текущую запись из выборки
+            if self.pk:
+                active_assignments = active_assignments.exclude(pk=self.pk)
+
+            if active_assignments.count() >= 2:
+                raise ValidationError("На участке может быть не более 2 активных назначений (без даты окончания)")
+
+            if active_assignments.filter(doctor=self.doctor).exists():
+                raise ValidationError("Данный врач уже назначен на участок на активный период")
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        super().save(*args, **kwargs)
 
 
 class SourceSystem(models.Model):

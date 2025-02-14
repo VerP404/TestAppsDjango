@@ -7,7 +7,7 @@ from .models import (
     Department,
     Station,
     SourceSystem,
-    RelatedDepartment
+    RelatedDepartment, StationDoctorAssignment
 )
 
 
@@ -15,14 +15,20 @@ from .models import (
 class DepartmentInline(admin.TabularInline):
     model = Department
     extra = 1
-    # Поле building уже установлено родительской записью, поэтому дополнительная фильтрация не требуется
 
 
 # Inline для записи связи с внешними системами внутри отделения
 class RelatedDepartmentInline(admin.TabularInline):
     model = RelatedDepartment
     extra = 1
-    # Здесь поле department фиксируется родительским отделением
+
+
+class StationDoctorAssignmentInline(admin.TabularInline):
+    model = StationDoctorAssignment
+    extra = 0
+    fields = ('doctor', 'appointment_date', 'removal_date')
+    verbose_name = 'Назначение врача'
+    verbose_name_plural = 'Назначения врачей'
 
 
 def get_active_organization():
@@ -125,7 +131,9 @@ class DepartmentAdmin(admin.ModelAdmin):
 @admin.register(Station)
 class StationAdmin(admin.ModelAdmin):
     list_display = ('code', 'name', 'department')
+    search_fields = ('name', 'code')
     list_filter = (('department__building', RelatedOnlyFieldListFilter),)
+    inlines = [StationDoctorAssignmentInline]
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
