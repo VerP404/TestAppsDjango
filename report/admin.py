@@ -4,21 +4,21 @@ from .models import Report, ReportData
 
 @admin.register(Report)
 class ReportAdmin(admin.ModelAdmin):
-    """
-    Админка для отчётов.
-    Без inlines — просто отдельный список,
-    где можно увидеть, какой шаблон, пользователь, дата и т.д.
-    """
-    list_display = ("template", "user", "date", "created_at", "updated_at")
+    list_display = ("template", "user", "date", "status", "created_at", "updated_at")
     search_fields = ("template__title", "user__username")
     date_hierarchy = "date"
 
-    # Если хотите, чтобы при сохранении автоматически создавались данные:
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
-        # После сохранения (при первом создании) вызываем метод для инициализации ячеек
-        if not change:  # означает, что это новое создание
+        if not change:
             obj.create_or_update_data()
+
+    def get_readonly_fields(self, request, obj=None):
+        if obj and obj.status in ['for_approval', 'approved']:
+            # Если отчёт уже для утверждения или утвержден – делаем все поля недоступными для редактирования
+            return [field.name for field in self.model._meta.fields]
+        return super().get_readonly_fields(request, obj)
+
 
 
 @admin.register(ReportData)

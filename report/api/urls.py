@@ -8,4 +8,6 @@ router.register(r'reportdata', ReportDataViewSet, basename='reportdata')
 
 urlpatterns = [
     path('', include(router.urls)),
+    path('reports/<int:report_id>/data/<int:row_id>/<int:col_id>/',
+         ReportDataViewSet.as_view({'patch': 'partial_update'})),
 ]

@@ -8,10 +8,11 @@ from report_template.models import (
 
 
 class Report(models.Model):
-    """
-    Конкретный отчёт, созданный пользователем (или системой) на основе шаблона.
-    Например, пользователь выбирает "Шаблон отчёта" и указывает дату.
-    """
+    STATUS_CHOICES = [
+        ('draft', 'Черновик'),
+        ('for_approval', 'Для утверждения'),
+        ('approved', 'Утвержден'),
+    ]
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -25,11 +26,17 @@ class Report(models.Model):
         verbose_name="Шаблон отчёта"
     )
     date = models.DateField(verbose_name="Дата отчёта")
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='draft',
+        verbose_name="Статус"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.template.title} от {self.date}"
+        return f"{self.template.title} от {self.date} ({self.get_status_display()})"
 
     class Meta:
         verbose_name = "Отчёт"
@@ -37,26 +44,20 @@ class Report(models.Model):
 
     def create_or_update_data(self):
         """
-        Метод, который создаёт (или дополняет) ReportData
-        для всех строк/столбцов в выбранном шаблоне.
+        Создаёт (или дополняет) ReportData для всех строк/столбцов в выбранном шаблоне.
         """
-        # Идём по всем таблицам в шаблоне, затем по строкам и столбцам.
-        # Для простоты в этом примере не создаём отдельную модель "ReportTable",
-        # а просто создаём данные на пересечении RowTemplate и ColumnTemplate.
         for table_tpl in self.template.tables.all():
             row_qs = table_tpl.rows.all()
             col_qs = table_tpl.columns.all()
             for row_tpl in row_qs:
                 for col_tpl in col_qs:
-                    # Создаём запись, если её ещё нет
-                    # По умолчанию value = 0, если вы хотите хранить числа
-                    # Или value=None, если хотите хранить null
                     ReportData.objects.get_or_create(
                         report=self,
                         row=row_tpl,
                         column=col_tpl,
-                        defaults={'value': 0}  # или defaults={'value': None}
+                        defaults={'value': 0}
                     )
+
 
 
 class ReportData(models.Model):

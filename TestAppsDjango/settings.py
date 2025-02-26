@@ -43,7 +43,7 @@ INSTALLED_APPS = [
     'report',
     'report_template',
 
-    'nested_admin',
+    # 'nested_admin',
     'rest_framework',
 ]
 
