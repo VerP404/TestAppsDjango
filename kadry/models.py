@@ -1,8 +1,7 @@
 import datetime
 from django.db import models
-from django.core.validators import MinValueValidator, MaxValueValidator
-from person.models import PhysicalPerson  # Предполагается, что физлицо хранится в приложении "person"
-from organization.models import Department  # Из приложения "organization"
+from person.models import PhysicalPerson
+from organization.models import Department
 
 
 class Employee(models.Model):
@@ -187,7 +186,7 @@ class MaternityLeave(models.Model):
         verbose_name_plural = "Декреты"
 
     def __str__(self):
-        return f"Декрет для {self.appointment} с {self.planned_start_date} до {self.planned_end_date}"
+        return f"Декрет для {self.appointment} с {self.start_date} до {self.planned_end_date}"
 
 
 class DoctorCode(models.Model):

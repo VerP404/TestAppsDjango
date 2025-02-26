@@ -32,7 +32,7 @@ class AppointmentInline(admin.TabularInline):
 class EmployeeAdmin(admin.ModelAdmin):
     list_display = ('physical_person', 'payroll_number', 'status')
     search_fields = ('physical_person__last_name', 'physical_person__first_name', 'payroll_number')
-    autocomplete_fields = ('physical_person',)  # поиск физ. лиц через автодополнение
+    autocomplete_fields = ('physical_person',)
     inlines = [AppointmentInline]
 
 
