@@ -202,13 +202,17 @@ app.layout = dbc.Container([
                 id="report-status-toggle",
                 options=[
                     {"label": "Черновик", "value": "draft"},
-                    {"label": "Для утверждения", "value": "for_approval"}
+                    {"label": "Для утверждения", "value": "for_approval"},
+                    {"label": "Утвержден", "value": "approved"}
                 ],
                 value="draft",
                 inline=True
                 # свойство disabled убрано
             )
-        ], width=6)
+        ], width=6),
+        dbc.Col([
+            dbc.Alert("Утвержденный отчет отменяется администратором", color="warning"),
+        ], width=6),
     ], className="mt-3"),
 
     dbc.Row([
@@ -257,21 +261,54 @@ status_map = {
 @app.callback(
     [Output("report-status-toggle", "value"),
      Output("report-status-toggle", "style")],
-    Input("report-dropdown", "value"),
-    State("reports-store", "data")
+    [Input("report-dropdown", "value"),
+     Input("reports-store", "data")],
+    prevent_initial_call=True
 )
-def update_status_toggle(report_id, reports_store):
-    if not report_id or not reports_store:
+def update_status_toggle(report_id, reports_data):
+    if not report_id or not reports_data:
         return "draft", {}
     current_status = "draft"
-    disabled = False
-    for rep in reports_store:
+    for rep in reports_data:
         if rep["id"] == report_id:
             current_status = rep.get("status", "draft")
-            disabled = (current_status == "approved")
             break
-    style = {"pointerEvents": "none", "opacity": 0.5} if disabled else {}
+    # Блокировка переключателя применяется только если статус в БД равен "approved"
+    style = {"pointerEvents": "none", "opacity": 0.5} if current_status == "approved" else {}
     return current_status, style
+
+
+    # Ищем статус отчёта в хранилище
+    current_status = "draft"
+    for rep in reports_data:
+        if rep["id"] == report_id:
+            current_status = rep.get("status", "draft")
+            break
+
+    # Логика блокировки
+    def make_locked():
+        style = {"pointerEvents": "none", "opacity": 0.5}
+        return "approved", style
+
+    # Если вызвано изменением отчёта (report-dropdown) или обновлением списка (reports-store)
+    # то мы игнорируем старое radio_value и ставим переключатель на current_status
+    if trigger_id in ["report-dropdown", "reports-store"]:
+        if current_status == "approved":
+            return make_locked()
+        # Иначе возвращаем статус из базы
+        return current_status, {}
+
+    # Если же триггер — это сам переключатель (radio_value), значит пользователь кликнул в UI
+    if trigger_id == "report-status-toggle":
+        # Если отчёт уже approved или пользователь только что выбрал approved, блокируем
+        if current_status == "approved" or radio_value == "approved":
+            return make_locked()
+        # Иначе оставляем radio_value
+        return radio_value, {}
+
+    # На всякий случай, если что-то не учли
+    return radio_value, {}
+
 
 
 @app.callback(
@@ -283,14 +320,13 @@ def update_report_dropdown(selected_template, reports_data):
     if not selected_template or not reports_data:
         return []
     filtered_reports = [r for r in reports_data if r["template"] == selected_template]
-    options = [
-        {
-            "label": f"Отчёт {rep['id']} от {rep.get('date', '')} ({status_map.get(rep.get('status', 'draft'), 'Черновик')})",
-            "value": rep["id"]
-        }
+    # Сортируем по id (предполагается, что более высокий id — более новый отчет)
+    filtered_reports.sort(key=lambda r: r["id"], reverse=True)
+    return [
+        {"label": f"Отчёт {rep['id']} от {rep.get('date', '')} ({status_map.get(rep.get('status', 'draft'), 'Черновик')})",
+         "value": rep["id"]}
         for rep in filtered_reports
     ]
-    return options
 
 
 # 2) Callback: при выборе отчёта строим таблицу, объединив структуру шаблона и данные отчёта
@@ -304,23 +340,23 @@ def build_report_tables(selected_report_id, reports_data, selected_template_id):
     if not selected_report_id or not selected_template_id:
         return "Сначала выберите шаблон и отчёт."
 
-    # Определяем статус выбранного отчёта из reports-store
+    # Определяем текущий статус выбранного отчёта из reports-store
     current_status = "draft"
     if reports_data:
         for rep in reports_data:
             if rep["id"] == selected_report_id:
                 current_status = rep.get("status", "draft")
                 break
-    # Если статус не draft, редактирование запрещено
+    # Если статус не "draft", редактирование ячеек запрещено
     input_disabled = (current_status != "draft")
 
-    # Запрашиваем структуру шаблона
+    # Получаем структуру шаблона
     template_detail = get_template_detail(selected_template_id)
     tables = template_detail.get("tables", [])
     if not tables:
         return "В шаблоне нет таблиц."
 
-    # Запрашиваем данные ReportData
+    # Получаем данные отчёта
     data_list = get_report_data(selected_report_id)
     data_map = {}
     for d in data_list:
@@ -329,7 +365,7 @@ def build_report_tables(selected_report_id, reports_data, selected_template_id):
         val = d.get("value", "")
         data_map[(row_id, col_id)] = val
 
-    # Формируем HTML-таблицы
+    # Строим HTML-таблицы
     all_tables_html = []
     for tbl in tables:
         tbl_title = tbl.get("title", "Без названия")
@@ -376,7 +412,6 @@ def build_report_tables(selected_report_id, reports_data, selected_template_id):
         )
 
     return all_tables_html
-
 
 
 @app.callback(
@@ -472,15 +507,15 @@ def save_and_reset(n_clicks, n_intervals, changes, report_id, new_status, report
             except Exception as e:
                 print(f"Исключение при обновлении данных ({row_id}, {col_id}):", e)
 
-        # Определяем текущий статус отчёта из local store
+        # Определяем текущий статус отчёта из reports_store
         current_status = None
         for rep in reports_store:
             if rep["id"] == report_id:
                 current_status = rep.get("status", "draft")
                 break
 
-        # Если статус изменился, отправляем обновление
-        if current_status is not None and new_status != current_status:
+        # Если отчёт уже утвержден, не разрешаем изменение статуса
+        if current_status != "approved" and new_status != current_status:
             url = f"{API_REPORTS_BASE}{report_id}/"
             payload = {"status": new_status}
             try:
@@ -492,7 +527,7 @@ def save_and_reset(n_clicks, n_intervals, changes, report_id, new_status, report
             except Exception as e:
                 print("Исключение при обновлении статуса:", e)
 
-        # После сохранения обновляем список отчетов из API
+        # Обновляем список отчетов после сохранения
         updated_reports = get_all_reports()
         # Устанавливаем временное сообщение и сигнал для сброса (reset_flag = True)
         return "Изменения сохранены!", "", True, 0, updated_reports
@@ -500,7 +535,7 @@ def save_and_reset(n_clicks, n_intervals, changes, report_id, new_status, report
     # Если сработал интервал (reset-interval)
     elif trigger_id == "reset-interval":
         if reset_flag:
-            # Сбрасываем надписи и очищаем флаг; также сбрасываем счетчик interval
+            # Сбрасываем надписи и очищаем флаг, сбрасываем счетчик interval
             return "Сохранить изменения", "", False, 0, dash.no_update
         else:
             return dash.no_update, dash.no_update, reset_flag, dash.no_update, dash.no_update

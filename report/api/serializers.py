@@ -14,4 +14,3 @@ class ReportDataSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReportData
         fields = ['id', 'report', 'row', 'column', 'value']
-        # read_only_fields = ['report', 'row', 'column']
